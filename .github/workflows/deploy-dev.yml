@@ -1,0 +1,28 @@
+name: Deploy to Databricks dev
+
+# Runs only when NonProd changes, which only happens through a merged pull request.
+on:
+  push:
+    branches: [NonProd]
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Get the repository contents onto the runner machine.
+      - uses: actions/checkout@v4
+
+      # 2. Install the Databricks command line tool.
+      - uses: databricks/setup-cli@main
+
+      # 3. Copy the code into the Shared folder that stands in for the DEV workspace.
+      #    rsync builds a clean copy without the .git and .github folders,
+      #    because those belong to GitHub, not to the workspace.
+      - name: Deploy to /Workspace/Shared/dev/ods
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          rsync -a --exclude .git --exclude .github ./ /tmp/deploy/
+          databricks workspace mkdirs /Workspace/Shared/dev
+          databricks workspace import-dir /tmp/deploy /Workspace/Shared/dev/ods --overwrite
