@@ -1,0 +1,35 @@
+name: Deploy to Databricks
+
+# One workflow for all three permanent branches. The branch name decides the folder.
+on:
+  push:
+    branches: [NonProd, Stage, Prod]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: databricks/setup-cli@main
+
+      # Map branch -> environment folder. Anything else fails on purpose.
+      - name: Pick target folder from branch
+        id: target
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            NonProd) env=dev ;;
+            Stage)   env=stg ;;
+            Prod)    env=prd ;;
+            *) echo "No deployment target for branch ${GITHUB_REF_NAME}"; exit 1 ;;
+          esac
+          echo "env=$env" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to /Workspace/Shared/${{ steps.target.outputs.env }}/ods
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          ENV: ${{ steps.target.outputs.env }}
+        run: |
+          rsync -a --exclude .git --exclude .github ./ /tmp/deploy/
+          databricks workspace mkdirs "/Workspace/Shared/${ENV}"
+          databricks workspace import-dir /tmp/deploy "/Workspace/Shared/${ENV}/ods" --overwrite
